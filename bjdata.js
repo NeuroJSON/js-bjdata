@@ -35,21 +35,12 @@ var floor = Math.floor;
 var dumpint = function (val, size, endian) {
   var b = buffer_module.Buffer(size);
 
-  if (endian !== 'b') {
-    throw 'Expected only big endian encoding.';
-  }
-
-  if (size === 1) {
-    endian = '';
-  } else {
-    endian = 'BE';
-  }
-
   if (val > pow2(8 * size)) {
     // twos-complement encode too-large values.
     val = val - pow2(8 * size);
   }
-
+  if (size === 1)
+    endian = '';
   b['writeInt' + (8 * size) + endian].apply(b, [val, 0]);
   return b;
 };
@@ -57,16 +48,10 @@ var dumpint = function (val, size, endian) {
 var dumpfloat = function (val, type, endian) {
   var b;
 
-  if (endian !== 'b') {
-    throw 'Expected only big endian encoding.';
-  } else {
-    endian = 'BE';
-  }
-
-  if (type === 'f') {
+  if (type === 'd') {
     b = buffer_module.Buffer(4);
     b['writeFloat' + endian].apply(b, [val, 0]);
-  } else if (type === 'd') {
+  } else if (type === 'D') {
     b = buffer_module.Buffer(8);
     b['writeDouble' + endian].apply(b, [val, 0]);
   } else {
@@ -76,29 +61,16 @@ var dumpfloat = function (val, type, endian) {
 };
 
 var undumpint = function(buf, offset, size, endian) {
-  if (endian !== 'b') {
-    throw 'Expected only big endian encoding.';
-  }
-
-  if (size === 1) {
+  if (size === 1)
     endian = '';
-  } else {
-    endian = 'BE';
-  }
   return buf['readInt' + (8 * size) + endian].apply(buf, [offset]);
 };
 
 var undumpfloat = function(buf, offset, type, endian) {
-  if (endian !== 'b') {
-    throw 'Expected only big endian encoding.';
-  } else {
-    endian = 'BE';
-  }
-
-  if (type === 'f') {
-    return buf['readFloat' + endian].apply(buff, [offset]);
-  } else if (type === 'd') {
-    return buf['readDouble' + endian].apply(buff, [offset]);
+  if (type === 'd') {
+    return buf['readFloat' + endian].apply(buf, [offset]);
+  } else if (type === 'D') {
+    return buf['readDouble' + endian].apply(buf, [offset]);
   } else {
     throw 'Unexpected float type ' + type + '.';
   }
@@ -112,7 +84,7 @@ var type = function (val) {
   return typeof val;
 };
 var error = function (msg) {
-  throw "js-ubjson: " + msg;
+  throw "js-bjdata: " + msg;
 };
 
 var insert = function(array, val) {
@@ -135,30 +107,69 @@ var pow2 = function(v) {
 
 // Mapping from maximum value -> ubjson tag
 var int_maxes = [
-  pow2( 7),
-  pow2(15),
-  pow2(31),
-  pow2(63),
+  pow2( 8),
+  pow2(16),
+  pow2(32),
+  pow2(64),
 ];
 
 var int_tags = [
-  'i',
-  'I',
-  'l',
-  'L',
+  'U',
+  'u',
+  'm',
+  'M',
 ];
 
 // ubjson tag -> size in bytes
 var int_tag_size = {
   U : 1,
   i : 1,
+  u : 2,
   I : 2,
+  m : 4,
   l : 4,
+  M : 8,
   L : 8,
 };
 
+// bjdata tag -> jdata tags
+var jd_type = {
+  U : "uint8",
+  i : "int8",
+  u : "uint16",
+  I : "int16",
+  m : "uint32",
+  l : "int32",
+  M : "uint64",
+  L : "int64",
+  d : "float32",
+  D : "float64",
+};
+
+// bjdata tag -> jdata tags
+var jd_len = {
+  U : 1,
+  i : 1,
+  u : 2,
+  I : 2,
+  m : 4,
+  l : 4,
+  M : 8,
+  L : 8,
+  d : 4,
+  D : 8,
+};
+
+var typedfun={
+  "Float32Array":null,"Float64Array":null,
+  "Int8Array":null,  "Uint8Array":null,
+  "Int16Array":null, "Uint16Array":null,
+  "Int32Array":null, "Uint32Array":null,
+  "BigInt64Array":null, "BigUint64Array":null
+};
+
 // Use doubles to serialize Lua numbers.
-var use_double = false;
+var use_double = true;
 
 // Get the smallest tag and size to hold a value.
 function int_tag(val) {
@@ -262,15 +273,15 @@ function array_helper(val) {
     var size = int_tag_size[t];
     if ( size ) {
       write_val = function(val, buffer, memo) {
-        insert(buffer, dumpint(val, size, 'b'));
-      };
-    } else if ( t === 'f' ) {
-      write_val = function(val, buffer, memo) {
-        insert(buffer, dumpfloat(val, 'f', 'b'));
+        insert(buffer, dumpint(val, size, 'LE'));
       };
     } else if ( t === 'd' ) {
       write_val = function(val, buffer, memo) {
-        insert(buffer, dumpfloat(val, 'd', 'b'));
+        insert(buffer, dumpfloat(val, 'd', 'LE'));
+      };
+    } else if ( t === 'D' ) {
+      write_val = function(val, buffer, memo) {
+        insert(buffer, dumpfloat(val, 'D', 'LE'));
       };
     } else {
       // Tag should be 'T', 'F', 'Z'
@@ -289,7 +300,7 @@ function encode_int(val, buffer) {
   var tag = ts[0];
   var size = ts[1];
   insert(buffer, tag);
-  insert(buffer, dumpint(val, size, 'b'));
+  insert(buffer, dumpint(val, size, 'LE'));
 
   // TODO(kzentner): Huge int support?
 }
@@ -311,10 +322,10 @@ function encode_inner(val, buffer, memo, depth) {
     } else {
       if ( use_double ) {
         insert(buffer, 'D');
-        insert(buffer, dumpfloat(val, 'd', 'b'));
+        insert(buffer, dumpfloat(val, 'D', 'LE'));
       } else {
         insert(buffer, 'd');
-        insert(buffer, dumpfloat(val, 'f', 'b'));
+        insert(buffer, dumpfloat(val, 'd', 'LE'));
       }
     }
   } else if ( t === 'null' || t === 'undefined' ) {
@@ -394,11 +405,12 @@ function decode_int(str, offset, depth, error_context) {
   if ( int_size === undefined ) {
     error(error_context + ' length did not have an integer tag.', depth);
   }
-  var i = undumpint(str, offset + 1, int_size, 'b');
+  var i = undumpint(str, offset + 1, int_size, 'LE');
   if ( c === 'U' && i < 0 ) {
     // Undo twos-complement
     i = 256 + i;
   }
+  
   return [i, offset + 1 + int_size];
 }
 
@@ -418,15 +430,15 @@ function get_read_func(tag) {
   }
   if ( int_size !== undefined ) {
     return function(str, offset, depth) {
-      return [undumpint(str, offset, int_size, 'b'), offset + int_size];
+      return [undumpint(str, offset, int_size, 'LE'), offset + int_size];
     };
   } else if ( tag === 'd' ) {
     return function(str, offset, depth) {
-      return [undumpfloat(str, offset, 'f', 'b'), offset + 4];
+      return [undumpfloat(str, offset, 'd', 'LE'), offset + 4];
     };
   } else if ( tag === 'D' ) {
     return function(str, offset, depth) {
-      return [undumpfloat(str, offset, 'd', 'b'), offset + 8];
+      return [undumpfloat(str, offset, 'D', 'LE'), offset + 8];
     };
   } else if ( tag === 'T' ) {
     return function(str, offset, depth) {
@@ -455,7 +467,6 @@ function decode_str(str, offset, depth) {
   var ls = decode_int(str, offset, depth + 1, 'String at offset ' + offset);
   var str_length = ls[0];
   var str_start = ls[1];
-
   // Since bufStr is inclusive at of the end, -1 is needed.
   return [bufStr(str, str_start, str_start + str_length - 1), str_start + str_length];
 }
@@ -473,16 +484,15 @@ function decode_inner(str, offset, depth) {
   if ( depth === null ) {
     error('Depth missing');
   }
-
   var c = bufStr(str, offset, offset);
   var int_size = int_tag_size[c];
   if ( int_size !== undefined ) {
-    return [undumpint(str, offset + 1, int_size, 'b'), offset + 1 + int_size];
+    return [undumpint(str, offset + 1, int_size, 'LE'), offset + 1 + int_size];
   } else if ( c === 'C' ) {
-    return [undumpint(str, offset + 1, 1, 'b'), offset + 2];
+    return [undumpint(str, offset + 1, 1, 'LE'), offset + 2];
   } else if ( c === 'S' || c === 'H' ) {
     // TODO(kzentner): How to handle huge numbers?
-    return [decode_str(str, offset + 1, depth + 1)];
+    return decode_str(str, offset + 1, depth + 1)
   } else if ( c === 'T' ) {
     return [true, offset + 1];
   } else if ( c === 'F' ) {
@@ -491,15 +501,20 @@ function decode_inner(str, offset, depth) {
     return [null, offset + 1];
   } else if ( c === 'N' ) {
     return [null, offset + 1, true];
+  } else if ( c === 'd' ) {
+    return [undumpfloat(str, offset + 1, 'd', 'LE'), offset + 5];
+  } else if ( c === 'D' ) {
+    return [undumpfloat(str, offset + 1, 'D', 'LE'), offset + 9];
   } else if ( c === '[' || c === '{' ) {
     var start_offset = offset + 1;
     var tag = bufStr(str, start_offset, start_offset);
     var length = null;
     var out;
     var read_val = decode_inner;
+    var t = ' '
     if ( tag === '$' ) {
       start_offset = start_offset + 1;
-      var t = bufStr(str, start_offset, start_offset);
+      t = bufStr(str, start_offset, start_offset);
       start_offset = start_offset + 1;
       tag = bufStr(str, start_offset, start_offset);
       read_val = get_read_func(t);
@@ -522,14 +537,20 @@ function decode_inner(str, offset, depth) {
         msg = 'Object';
       }
       msg = msg + ' length at offset ' + offset;
-      var ls = decode_int(str, start_offset + 1, depth + 1, msg);
-      length = ls[0];
+      var ls;
+      if(bufStr(str, start_offset+1, start_offset+1) == '['){
+          ls=decode_inner(str, start_offset+1, depth);
+          length=ls[0].reduce((a, b)=> a*b, 1);
+      }else{
+          ls = decode_int(str, start_offset + 1, depth + 1, msg);
+          length = ls[0];
+      }
       start_offset = ls[1];
     } else {
       start_offset = start_offset - 1;
     }
 
-    var elt_offset = start_offset;
+    var elt_offset = start_offset+1;
     var key, val, skip;
     var ke;
     var ves;
@@ -537,13 +558,29 @@ function decode_inner(str, offset, depth) {
     if ( c === '[' ) {
       out = [];
       if ( length !== null ) {
-        for (i = 0; i < length; i++) {
-          ves = read_val(str, elt_offset, depth + 1);
-          val = ves[0];
-          elt_offset = ves[1];
-          skip = ves[2];
-          if ( ! skip ) {
-            out.push(val);
+        elt_offset = start_offset;
+        let tagid=jd_type[t];
+        if(tagid !== undefined){
+          let type=jd_type[t];
+          let bytelen=jd_len[t] * length;
+          let typename=type.charAt(0).toUpperCase() + type.substring(1) + "Array";
+          if(type=='int64' || type=='uint64')
+               typename='Big'+typename;
+          out=new Uint8Array(Buffer.from(str.buffer, elt_offset, bytelen));
+          if(typedfun[typename] == null)
+              typedfun[typename]=new Function('d', 'return new '+typename+'(d)');
+          let typecast=typedfun[typename];
+          out=typecast(out.buffer);
+          elt_offset+=bytelen;
+        }else{
+          for (i = 0; i < length; i++) {
+            ves = read_val(str, elt_offset, depth + 1);
+            val = ves[0];
+            elt_offset = ves[1];
+            skip = ves[2];
+            if ( ! skip ) {
+              out.push(val);
+            }
           }
         }
       } else {
@@ -556,6 +593,7 @@ function decode_inner(str, offset, depth) {
             out.push(val);
           }
         }
+        elt_offset++;
       }
     } else {
       out = {};
@@ -585,6 +623,7 @@ function decode_inner(str, offset, depth) {
             out[key] = val;
           }
         }
+        elt_offset++;
       }
     }
     return [out, elt_offset];
@@ -603,14 +642,14 @@ function decode_offset(str, offset) {
 
 // Just get the decoded value.
 function decode(str, offset) {
-  return decode_offset(str, offset)[0];
+  return decode_offset(str, offset);
 }
 
-var ubjson = {
-  version : 'js-ubjson 0.1',
+var bjdata = {
+  version : 'js-bjdata 0.2',
   encode : encode,
   decode : decode,
   decode_offset: decode_offset
 };
 
-module.exports = ubjson;
+module.exports = bjdata;
