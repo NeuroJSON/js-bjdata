@@ -216,7 +216,7 @@ function int_tag(val) {
   last_key = 'U';
   for (let idx = 0 ; idx < int_maxes.length; idx++) {
     let max = int_maxes[idx];
-    if ( val <= max ) {
+    if ( val < max ) {
       return [last_key, int_tag_size[last_key]];
     } else {
       last_key = int_tags[idx+1];
@@ -229,7 +229,7 @@ function int_tag(val) {
 // that type, otherwise return the Lua type string.
 function val_tag(val) {
   var t = type(val);
-  if ( t === 'number' ) {
+  if ( t === 'number' || t === 'bigint') {
     t = int_tag(val)[0];
   } else if ( t === 'boolean' ) {
     if ( t ) {
@@ -327,8 +327,6 @@ function encode_int(val, buffer) {
   var size = ts[1];
   insert(buffer, tag);
   insert(buffer, dumpint(val, size, tag, 'LE'));
-
-  // TODO(kzentner): Huge int support?
 }
 
 function encode_inner(val, buffer, memo, depth) {
@@ -354,7 +352,7 @@ function encode_inner(val, buffer, memo, depth) {
         insert(buffer, dumpfloat(val, 'd', 'LE'));
       }
     }
-  } else if (typeof val === 'bigint') {
+  } else if (t === 'bigint') {
       encode_int(val, buffer);
   } else if ( t === 'null' || t === 'undefined' ) {
     insert(buffer, 'Z');
