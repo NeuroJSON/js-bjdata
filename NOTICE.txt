@@ -1,0 +1,6 @@
+Binary JData (BJData) Encoder/Decoder for JavaScript and NodeJS
+
+Copyright (C) 2022 Qianqian Fang <q.fang at neu.edu>
+Copyright (C) 2014 Kyle R. Zentner (https://github.com/zentner-kyle/ubjson.js)
+
+License: Apache License Version 2.0, please see LICENSE for details

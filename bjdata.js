@@ -32,16 +32,11 @@ var buffer_module = require('buffer');
 
 var abs = Math.abs;
 var floor = Math.floor;
-var dumpint = function (val, size, endian) {
+var dumpint = function (val, size, type, endian) {
   var b = buffer_module.Buffer(size);
-
-  if (val > pow2(8 * size)) {
-    // twos-complement encode too-large values.
-    val = val - pow2(8 * size);
-  }
   if (size === 1)
     endian = '';
-  b['writeInt' + (8 * size) + endian].apply(b, [val, 0]);
+  b[write_fun[type] + endian].apply(b, [val, 0]);
   return b;
 };
 
@@ -60,10 +55,10 @@ var dumpfloat = function (val, type, endian) {
   return b;
 };
 
-var undumpint = function(buf, offset, size, endian) {
+var undumpint = function(buf, offset, type, size, endian) {
   if (size === 1)
     endian = '';
-  return buf['readInt' + (8 * size) + endian].apply(buf, [offset]);
+  return buf[read_fun[type] + endian].apply(buf, [offset]);
 };
 
 var undumpfloat = function(buf, offset, type, endian) {
@@ -95,22 +90,12 @@ var bufStr = function(buf, start, end) {
   return buf.slice(start, end + 1).toString();
 };
 
-// Calculate 2 ^ v
-var pow2 = function(v) {
-  var out = 1;
-  for (var i = 0; i < v; i++) {
-    // Use floats, since this may end up very large.
-    out = out * 2.0;
-  }
-  return out;
-};
-
 // Mapping from maximum value -> ubjson tag
 var int_maxes = [
-  pow2( 8),
-  pow2(16),
-  pow2(32),
-  pow2(64),
+  256.0,
+  65536.0,
+  4294967296.0,
+  18446744073709551616.0,
 ];
 
 var int_tags = [
@@ -118,6 +103,15 @@ var int_tags = [
   'u',
   'm',
   'M',
+  'M'
+];
+
+var neg_int_tags = [
+  'i',
+  'I',
+  'l',
+  'L',
+  'L'
 ];
 
 // ubjson tag -> size in bytes
@@ -142,8 +136,39 @@ var jd_type = {
   l : "int32",
   M : "uint64",
   L : "int64",
+  h : "int16",
   d : "float32",
   D : "float64",
+};
+
+var write_fun = {
+  U : "writeUInt8",
+  i : "writeInt8",
+  u : "writeUInt16",
+  I : "writeInt16",
+  m : "writeUInt32",
+  l : "writeInt32",
+  M : "writeBigUInt64",
+  L : "writeBigInt64",
+  h : "writeInt16",
+  d : "writeFloat",
+  D : "writeDouble",
+  C : "writeUInt8"
+};
+
+var read_fun = {
+  U : "readUInt8",
+  i : "readInt8",
+  u : "readUInt16",
+  I : "readInt16",
+  m : "readUInt32",
+  l : "readInt32",
+  M : "readBigUInt64",
+  L : "readBigInt64",
+  h : "readInt16",
+  d : "readFloat",
+  D : "readDouble",
+  C : "readUInt8"
 };
 
 // bjdata tag -> jdata tags
@@ -177,26 +202,27 @@ function int_tag(val) {
     return ['U', 1];
   }
   var last_key = 'i';
-  var size = 1;
   // Calculate the absolute value.
   if ( val < 0 ) {
-    val = -val;
-    // Because twos-complement can hold slightly larger negatives than
-    // positives.
-    if ( val !== 0 ) {
-      val = val - 1;
+    for (let idx = 0 ; idx < int_maxes.length; idx++) {
+      let max = int_maxes[idx];
+      if ( val >= -max/2 ) {
+        return [last_key, int_tag_size[last_key]];
+      } else {
+        last_key = neg_int_tags[idx+1];
+      }
     }
   }
-  for (var idx in int_maxes) {
-    var max = int_maxes[idx];
-    if ( val > max ) {
-      return [last_key, size];
+  last_key = 'U';
+  for (let idx = 0 ; idx < int_maxes.length; idx++) {
+    let max = int_maxes[idx];
+    if ( val <= max ) {
+      return [last_key, int_tag_size[last_key]];
     } else {
-      last_key = int_tags[idx];
-      size = size * 2;
+      last_key = int_tags[idx+1];
     }
   }
-  return [last_key, size / 2];
+  return [last_key, int_tag_size[last_key]];
 }
 
 // If val can be represented by a fixed size value type, return the tag for
@@ -273,7 +299,7 @@ function array_helper(val) {
     var size = int_tag_size[t];
     if ( size ) {
       write_val = function(val, buffer, memo) {
-        insert(buffer, dumpint(val, size, 'LE'));
+        insert(buffer, dumpint(val, size, t, 'LE'));
       };
     } else if ( t === 'd' ) {
       write_val = function(val, buffer, memo) {
@@ -300,7 +326,7 @@ function encode_int(val, buffer) {
   var tag = ts[0];
   var size = ts[1];
   insert(buffer, tag);
-  insert(buffer, dumpint(val, size, 'LE'));
+  insert(buffer, dumpint(val, size, tag, 'LE'));
 
   // TODO(kzentner): Huge int support?
 }
@@ -359,8 +385,8 @@ function encode_inner(val, buffer, memo, depth) {
       insert(buffer, tag);
     }
 
-    insert(buffer, '#');
-    encode_int(length, buffer);
+    //insert(buffer, '#');
+    //encode_int(length, buffer);
 
     if ( use_obj ) {
       for (k in val) {
@@ -375,6 +401,13 @@ function encode_inner(val, buffer, memo, depth) {
         write_val(val[k], buffer, memo, depth + 1);
       }
     }
+
+    if ( use_obj ) {
+      insert(buffer, '}');
+    } else {
+      insert(buffer, ']');
+    }
+
     // Remove val from memo.
     memo.splice(memo.indexOf(val), 1);
   }
@@ -405,7 +438,7 @@ function decode_int(str, offset, depth, error_context) {
   if ( int_size === undefined ) {
     error(error_context + ' length did not have an integer tag.', depth);
   }
-  var i = undumpint(str, offset + 1, int_size, 'LE');
+  var i = undumpint(str, offset + 1, c, int_size, 'LE');
   if ( c === 'U' && i < 0 ) {
     // Undo twos-complement
     i = 256 + i;
@@ -430,7 +463,7 @@ function get_read_func(tag) {
   }
   if ( int_size !== undefined ) {
     return function(str, offset, depth) {
-      return [undumpint(str, offset, int_size, 'LE'), offset + int_size];
+      return [undumpint(str, offset, tag, int_size, 'LE'), offset + int_size];
     };
   } else if ( tag === 'd' ) {
     return function(str, offset, depth) {
@@ -487,9 +520,9 @@ function decode_inner(str, offset, depth) {
   var c = bufStr(str, offset, offset);
   var int_size = int_tag_size[c];
   if ( int_size !== undefined ) {
-    return [undumpint(str, offset + 1, int_size, 'LE'), offset + 1 + int_size];
+    return [undumpint(str, offset + 1, c, int_size, 'LE'), offset + 1 + int_size];
   } else if ( c === 'C' ) {
-    return [undumpint(str, offset + 1, 1, 'LE'), offset + 2];
+    return [undumpint(str, offset + 1, c, 1, 'LE'), offset + 2];
   } else if ( c === 'S' || c === 'H' ) {
     // TODO(kzentner): How to handle huge numbers?
     return decode_str(str, offset + 1, depth + 1)
@@ -528,6 +561,7 @@ function decode_inner(str, offset, depth) {
         }
       }
     }
+
     // TODO(kzentner): Do not construct the error message every time.
     if ( tag === '#' ) {
       var msg;
@@ -538,19 +572,18 @@ function decode_inner(str, offset, depth) {
       }
       msg = msg + ' length at offset ' + offset;
       var ls;
-      if(bufStr(str, start_offset+1, start_offset+1) == '['){
-          ls=decode_inner(str, start_offset+1, depth);
-          length=ls[0].reduce((a, b)=> a*b, 1);
+      start_offset = start_offset + 1;
+
+      if(bufStr(str, start_offset, start_offset+1) == '['){
+          ls = decode_inner(str, start_offset, depth + 1, msg);
+          length = ls[0].reduce((a, b)=> a*b, 1);
       }else{
-          ls = decode_int(str, start_offset + 1, depth + 1, msg);
+          ls = decode_int(str, start_offset, depth + 1, msg);
           length = ls[0];
       }
       start_offset = ls[1];
-    } else {
-      start_offset = start_offset - 1;
     }
-
-    var elt_offset = start_offset+1;
+    var elt_offset = start_offset;
     var key, val, skip;
     var ke;
     var ves;
