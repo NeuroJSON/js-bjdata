@@ -11,10 +11,10 @@ let data={
 	uint16:65535,
 	int32: -2147483648,
 	uint32: 2147483649,
-	//int64:  -9223372036854775808n,
-	//uint64: 18446744073709551616n,
+	int64:  -9223372036854775808n,
+	uint64: 18446744073709551615n,
 	shortarray:[1,2,3],
-	object:[[[1],[2],[3]],null,false]
+	object:[[[1],[2],[3]],null,false],
 };
 
 let buf = bjd.encode(data)
@@ -24,5 +24,3 @@ console.log(buf.toString())
 let [newdata, offset] = bjd.decode(buf)
 
 console.log(newdata)
-
-let jmsh = bjd.decode(fs.readFileSync('zlib.bmsh'));

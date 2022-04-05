@@ -354,6 +354,8 @@ function encode_inner(val, buffer, memo, depth) {
         insert(buffer, dumpfloat(val, 'd', 'LE'));
       }
     }
+  } else if (typeof val === 'bigint') {
+      encode_int(val, buffer);
   } else if ( t === 'null' || t === 'undefined' ) {
     insert(buffer, 'Z');
   } else if ( t === 'boolean' ) {
@@ -574,7 +576,7 @@ function decode_inner(str, offset, depth) {
       var ls;
       start_offset = start_offset + 1;
 
-      if(bufStr(str, start_offset, start_offset+1) == '['){
+      if(bufStr(str, start_offset, start_offset) == '['){
           ls = decode_inner(str, start_offset, depth + 1, msg);
           length = ls[0].reduce((a, b)=> a*b, 1);
       }else{
