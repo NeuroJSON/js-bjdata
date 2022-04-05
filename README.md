@@ -12,7 +12,7 @@ Extra information available in [wiki].
 [Node.js]: http://nodejs.org/
 
 [Github repo]: https://github.com/NeuroJSON/js-bjdata
-[module site]: https://github.com/NeuroJSON/js-bjdata
+[module site]: https://npmjs.com/package/bjd
 [wiki]: http://neurojson.org
 
 
@@ -20,12 +20,11 @@ Installation
 ------------
 
 
-To use the `bjdata.js` module in node.js applications, you must first install the below dependencies
+To use the `bjdata.js` module in node.js applications, you must first install this module via
 
 ```sh
-npm install buffer
+npm install bjd
 ```
-
 
 Usage example
 -------------
@@ -33,11 +32,11 @@ Usage example
 For NodeJS applications, 
 
 ```js
-var bjd = require("./bjdata.js")
+var bjd = require("bjd")
 
 let data={integer:1,shortarray:[1,2,3],object:[[[1],[2],[3]],null,false]};
 let buf = bjd.encode(data);
-let newdata = bjd.decode(buf);
+let newdata = bjd.decode(buf)[0];
 
 console.log(newdata)
 ```

@@ -1,6 +1,6 @@
 {
-  "name": "bjdata",
-  "version": "0.3.0",
+  "name": "bjd",
+  "version": "0.3.2",
   "description": "js-bjata is a lightweight Binary JData (BJData) encoder and decoder for JavaScript and NodeJS",
   "main": "bjdata.js",
   "directories": {
@@ -14,12 +14,32 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/NeuroJSON/js-bjsdata.git"
+    "url": "git+https://github.com/NeuroJSON/js-bjdata.git"
   },
   "author": "Qianqian Fang <q.fang at neu.edu>",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/NeuroJSON/js-bdata/issues"
+    "url": "https://github.com/NeuroJSON/js-bjdata/issues"
   },
-  "homepage": "https://neurojson.org/"
+  "homepage": "http://neurojson.org",
+  "devDependencies": {},
+  "keywords": [
+    "JSON",
+    "JData",
+    "UBJSON",
+    "binary JSON",
+    "scientific data",
+    "BJData",
+    "encoder",
+    "decoder",
+    "parser",
+    "serialization",
+    "neuroimaging",
+    "mesh",
+    "JMesh",
+    "JNIfTI",
+    "JSNIRF",
+    "BJD",
+    "UBJ"
+  ]
 }
